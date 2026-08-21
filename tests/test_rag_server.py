@@ -8,7 +8,14 @@ from tests.conftest import FakeQueryCollection
 # --- config wiring ---
 
 def test_domains_derived_from_config():
-    assert rag_server.DOMAINS == {name: collection_name(name) for name in FOLDERS}
+    expected = {name: collection_name(name) for name, cfg in FOLDERS.items() if "collection" not in cfg}
+    assert rag_server.DOMAINS == expected
+
+
+def test_domains_excludes_collection_feeder_folders():
+    """werewolf_reports feeds vault_werewolf rather than being its own domain."""
+    assert "werewolf_reports" not in rag_server.DOMAINS
+    assert rag_server.DOMAINS["werewolf"] == "vault_werewolf"
 
 
 def test_client_is_lazy(monkeypatch):

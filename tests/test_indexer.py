@@ -121,3 +121,42 @@ def test_reconcile_removes_ghosts_but_keeps_live_files(write_note, tmp_path):
     indexer.reconcile_collection(collection, str(tmp_path))
 
     assert collection.deleted == [ghost]
+
+
+def test_reconcile_ignores_ids_from_other_folders_sharing_the_collection(write_note, tmp_path):
+    """Regression test: a shared collection (e.g. werewolf + werewolf_reports) must not have one
+    folder's reconcile pass delete the other folder's notes just because they're not on its disk."""
+    from tests.conftest import FakeCollection
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    live_report = write_note("reports/Session1.md", body="the report")
+    other_folder_note = str(tmp_path / "other_folder" / "Bob.md")  # not under reports_dir at all
+
+    collection = FakeCollection(ids=[live_report, other_folder_note])
+    indexer.reconcile_collection(collection, str(reports_dir))
+
+    assert collection.deleted == []
+
+
+# --- parse_report_note / route_werewolf_reports_file ---
+
+def test_report_note_is_zero_trust_bottom_tier(collection):
+    indexer.parse_report_note({}, "/reports/Session1.md", collection, "werewolf", "Bob and Alice fought a wyrm-spawn.")
+    meta = collection.last["metadata"]
+    assert meta["priority_score"] == 4
+    assert meta["data_category"] == "quest_report"
+    assert meta["chronicle_layer"] == "derived_summary"
+    assert collection.last["document"] == "Bob and Alice fought a wyrm-spawn."
+
+
+def test_report_note_falls_back_to_filename_when_empty(collection):
+    indexer.parse_report_note({}, "/reports/Session1.md", collection, "werewolf", "")
+    assert collection.last["document"] == "Quest report: Session1"
+
+
+def test_route_werewolf_reports_file_uses_body_as_document(write_note, collection):
+    path = write_note("reports/Session1.md", body="No frontmatter, just prose.")
+    indexer.route_werewolf_reports_file(path, collection, "werewolf")
+    assert collection.last["document"] == "No frontmatter, just prose."
+    assert collection.last["metadata"]["priority_score"] == 4

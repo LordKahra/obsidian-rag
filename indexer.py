@@ -74,8 +74,10 @@ def walk_markdown(folder_path):
                 yield os.path.join(root, file)
 
 def reconcile_collection(collection, folder_path):
-    """Deletes DB entries whose files no longer exist on disk (deletes/renames that happened while the indexer was off)."""
-    indexed_ids = set(collection.get(include=[])["ids"])
+    """Deletes DB entries whose files no longer exist on disk (deletes/renames that happened while the indexer was off).
+    Scoped to ids under folder_path, since a collection may be fed by more than one folder (e.g. werewolf_reports)."""
+    folder_prefix = os.path.join(folder_path, "")
+    indexed_ids = {i for i in collection.get(include=[])["ids"] if i.startswith(folder_prefix)}
     on_disk = set(walk_markdown(folder_path))
     for ghost in indexed_ids - on_disk:
         deindex_note(ghost, collection)
@@ -124,6 +126,18 @@ def parse_lore_note(frontmatter, file_path, collection, name, file_body):
     collection.upsert(documents=[str(text_content)], metadatas=[metadata], ids=[file_path])
     print(f"[{name.upper()} LORE INDEXED] {os.path.basename(file_path)}")
 
+def parse_report_note(frontmatter, file_path, collection, name, file_body):
+    """Handles quest reports: human-facing catch-up summaries generated from the data, not the data itself. Zero trust — bottom of the priority hierarchy."""
+    text_content = file_body or f"Quest report: {os.path.splitext(os.path.basename(file_path))[0]}"
+
+    metadata = clean_frontmatter(frontmatter, file_path)
+    metadata["data_category"] = "quest_report"
+    metadata["chronicle_layer"] = "derived_summary"
+    metadata["priority_score"] = 4
+
+    collection.upsert(documents=[str(text_content)], metadatas=[metadata], ids=[file_path])
+    print(f"[{name.upper()} REPORT INDEXED] {os.path.basename(file_path)}")
+
 def parse_generic_project_note(frontmatter, file_path, collection, name, file_body):
     """Fallback for project files that live outside the recognized data/ silos."""
     metadata = clean_frontmatter(frontmatter, file_path)
@@ -168,10 +182,16 @@ def route_standalone_file(file_path, collection, name):
     frontmatter, file_body = split_note(file_path)
     parse_standalone_note(frontmatter, file_path, collection, name, file_body)
 
+def route_werewolf_reports_file(file_path, collection, name):
+    """Switchboard for the quest-reports folder. Every file here is a report, so there's nothing to branch on."""
+    frontmatter, file_body = split_note(file_path)
+    parse_report_note(frontmatter, file_path, collection, name, file_body)
+
 # Maps the "router" string in FOLDERS config to an actual routing function.
 ROUTERS = {
     "project": route_project_file,
     "standalone": route_standalone_file,
+    "werewolf_reports": route_werewolf_reports_file,
 }
 
 def safe_index(route_func, file_path, collection, name):
@@ -228,7 +248,7 @@ if __name__ == "__main__":
             continue
 
         route_func = ROUTERS[config["router"]]
-        collection = chroma_client.get_or_create_collection(name=collection_name(name))
+        collection = chroma_client.get_or_create_collection(name=collection_name(config.get("collection", name)))
 
         print(f"Scanning collection: vault_{name} ({config['router']} router)...")
         for file_path in walk_markdown(folder_path):

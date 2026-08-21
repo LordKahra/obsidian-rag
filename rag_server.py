@@ -9,13 +9,16 @@ try:
 except ImportError:
     sys.exit("[ERROR] No config.py found. Copy config.example.py to config.py and set VAULT_ROOT.")
 
-# Maps friendly domain names to their Chroma collections.
-DOMAINS = {name: collection_name(name) for name in FOLDERS}
+# Maps friendly domain names to their Chroma collections. Folders with a "collection"
+# override feed an existing domain instead of being one themselves (e.g. werewolf_reports
+# feeds vault_werewolf), so they're excluded here.
+DOMAINS = {name: collection_name(name) for name, cfg in FOLDERS.items() if "collection" not in cfg}
 
 # Explains the werewolf priority hierarchy to the model reading results.
 PRIORITY_LEGEND = (
     "Priority guide: priority_score 1 (structured_note) is live chronicle truth and "
-    "overrides 2 (mechanics), which overrides 3 (lore). 4 is general project text. "
+    "overrides 2 (mechanics), which overrides 3 (lore), which overrides 4 (quest_report — "
+    "a derived catch-up summary, not source data, and zero-trust if it conflicts with anything above it). "
     "When results conflict, trust the lower number."
 )
 
