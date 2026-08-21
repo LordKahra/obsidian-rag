@@ -9,3 +9,7 @@ __pycache__/
 
 # Config
 config.py
+tray/config.py
+
+# Tray (Windows-side runtime output)
+tray/indexer.log
