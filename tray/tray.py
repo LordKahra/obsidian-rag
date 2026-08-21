@@ -9,13 +9,13 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
     from config import WSL_DISTRO, WSL_USER, REPO_PATH
 except ImportError:
     # pythonw.exe has no console, so a print()/exception here would vanish silently.
     ctypes.windll.user32.MessageBoxW(
-        0, "No config.py found in tray/. Copy config.example.py to config.py and set your WSL details.",
+        0, "No config.py found. Copy config.example.py to config.py in the repo root and set your details.",
         "Obsidian RAG Tray", 0x10,
     )
     raise SystemExit(1)
