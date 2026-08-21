@@ -12,25 +12,11 @@ from watchdog.events import FileSystemEventHandler
 
 # --- CONFIGURATION ---
 
-VAULT_ROOT = "/mnt/c/Users/chaos/Desktop/Kahra/Obsidian/raze-obsidian"
+try:
+    from config import FOLDERS, DB_PATH, LOCK_PORT, collection_name
+except ImportError:
+    sys.exit("[ERROR] No config.py found. Copy config.example.py to config.py and set VAULT_ROOT.")
 
-# Every indexed folder lives here. Each name maps to its own Chroma collection (vault_{name})
-# and declares which router parses its files. Folders not listed are simply never indexed
-# (generic Obsidian MCP covers those).
-FOLDERS = {
-    "werewolf": {"path": f"{VAULT_ROOT}/Creation/LARP/Werewolf",   "router": "project"},
-    "todo":     {"path": f"{VAULT_ROOT}/____system/_todo",         "router": "standalone"},
-    "writing":  {"path": f"{VAULT_ROOT}/Creation/Writing",         "router": "standalone"},
-}
-
-# Maps the "router" string in FOLDERS config to an actual routing function.
-ROUTERS = {
-    "project": route_project_file,
-    "standalone": route_standalone_file,
-}
-
-DB_PATH = os.path.expanduser("~/obsidian-rag/chroma_db")
-LOCK_PORT = 54321  # Arbitrary local port used to ensure only one instance runs
 _lock_socket = None # Global placeholder for our socket connection to prevent garbage collection
 
 def maintain_single_instance():
@@ -182,6 +168,12 @@ def route_standalone_file(file_path, collection, name):
     frontmatter, file_body = split_note(file_path)
     parse_standalone_note(frontmatter, file_path, collection, name, file_body)
 
+# Maps the "router" string in FOLDERS config to an actual routing function.
+ROUTERS = {
+    "project": route_project_file,
+    "standalone": route_standalone_file,
+}
+
 def safe_index(route_func, file_path, collection, name):
     """One wrapper owns filtering + error reporting for every indexing path."""
     if not is_markdown(file_path):
@@ -236,7 +228,7 @@ if __name__ == "__main__":
             continue
 
         route_func = ROUTERS[config["router"]]
-        collection = chroma_client.get_or_create_collection(name=f"vault_{name}")
+        collection = chroma_client.get_or_create_collection(name=collection_name(name))
 
         print(f"Scanning collection: vault_{name} ({config['router']} router)...")
         for file_path in walk_markdown(folder_path):
