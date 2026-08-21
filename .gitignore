@@ -6,3 +6,6 @@
 venv/
 chroma_db/
 __pycache__/
+
+# Config
+config.py
