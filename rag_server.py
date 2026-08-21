@@ -1,17 +1,16 @@
-import os
+import sys
 import chromadb
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 # --- CONFIGURATION ---
 
-DB_PATH = os.path.expanduser("~/obsidian-rag/chroma_db")
+try:
+    from config import FOLDERS, DB_PATH, collection_name
+except ImportError:
+    sys.exit("[ERROR] No config.py found. Copy config.example.py to config.py and set VAULT_ROOT.")
 
-# Maps friendly domain names to their Chroma collections. Must mirror FOLDERS in indexer.py.
-DOMAINS = {
-    "werewolf": "vault_werewolf",
-    "todo": "vault_todo",
-    "writing": "vault_writing",
-}
+# Maps friendly domain names to their Chroma collections.
+DOMAINS = {name: collection_name(name) for name in FOLDERS}
 
 # Explains the werewolf priority hierarchy to the model reading results.
 PRIORITY_LEGEND = (
@@ -20,16 +19,23 @@ PRIORITY_LEGEND = (
     "When results conflict, trust the lower number."
 )
 
-mcp = FastMCP("obsidian-rag")
-client = chromadb.PersistentClient(path=DB_PATH)
+mcp = MCPServer("obsidian-rag")
+_client = None  # Lazily created so importing this module never opens the DB.
 
 # --- HELPERS ---
+
+def get_client():
+    """Lazily creates the Chroma client on first use (not at import time)."""
+    global _client
+    if _client is None:
+        _client = chromadb.PersistentClient(path=DB_PATH)
+    return _client
 
 def get_collection(domain: str):
     """Resolves a domain name to its Chroma collection, or raises a readable error."""
     if domain not in DOMAINS:
         raise ValueError(f"Unknown domain '{domain}'. Valid domains: {', '.join(DOMAINS)}")
-    return client.get_or_create_collection(name=DOMAINS[domain])
+    return get_client().get_or_create_collection(name=DOMAINS[domain])
 
 def format_hit(document: str, metadata: dict, distance: float) -> str:
     """Renders one search hit as a readable block: source path, key metadata, then content."""
@@ -71,7 +77,7 @@ def list_domains() -> str:
     """Lists the searchable note domains and how many notes each contains."""
     lines = []
     for domain, col_name in DOMAINS.items():
-        count = client.get_or_create_collection(name=col_name).count()
+        count = get_client().get_or_create_collection(name=col_name).count()
         lines.append(f"- {domain}: {count} notes")
     return "\n".join(lines)
 
