@@ -1,4 +1,7 @@
 
+# JetBrains
+.idea/
+
 # Python
 venv/
 chroma_db/
