@@ -1,3 +1,4 @@
+import collections
 import ctypes
 import os
 import subprocess
@@ -30,6 +31,7 @@ PGREP_CMD = ["wsl.exe", "-d", WSL_DISTRO, "-u", WSL_USER, "--", "pgrep", "-f", I
 PKILL_CMD = ["wsl.exe", "-d", WSL_DISTRO, "-u", WSL_USER, "--", "pkill", "-f", INDEXER_MATCH_PATTERN]
 
 LOG_PATH = Path(__file__).resolve().parent / "indexer.log"
+MAX_LOG_LINES = 2000  # keeps the log readable instead of growing forever across restarts/uptime
 
 _lock = threading.Lock()
 
@@ -38,13 +40,23 @@ def is_running():
     result = subprocess.run(PGREP_CMD, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
     return result.returncode == 0
 
+def _pump_log(proc):
+    """Streams the indexer's output into LOG_PATH, keeping only the last MAX_LOG_LINES.
+    We own the writes ourselves (rather than redirecting the child's stdout straight to the
+    file) so trimming the file doesn't race against a handle the child process still has open."""
+    lines = collections.deque(maxlen=MAX_LOG_LINES)
+    for line in proc.stdout:
+        lines.append(line)
+        with open(LOG_PATH, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
 def start_indexer():
     with _lock:
         if is_running():
             return
-        log_file = open(LOG_PATH, "a", encoding="utf-8")
-        subprocess.Popen(INDEXER_CMD, stdout=log_file, stderr=subprocess.STDOUT,
-                          creationflags=subprocess.CREATE_NO_WINDOW)
+        proc = subprocess.Popen(INDEXER_CMD, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        threading.Thread(target=_pump_log, args=(proc,), daemon=True).start()
 
 def stop_indexer():
     with _lock:
