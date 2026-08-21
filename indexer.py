@@ -45,7 +45,8 @@ def split_note(file_path):
     return {}, full_content.strip()
 
 def clean_frontmatter(frontmatter, file_path):
-    """Extracts standard properties and strips wiki-links [[brackets]]."""
+    """Extracts standard properties, strips wiki-links [[brackets]], and stamps mtime
+    so a later run can skip re-indexing (and re-embedding) files that haven't changed."""
     metadata = {}
     for key, value in frontmatter.items():
         if key == 'text':
@@ -56,6 +57,7 @@ def clean_frontmatter(frontmatter, file_path):
         else:
             metadata[key] = str(value).replace('[[', '').replace(']]', '')
     metadata["file_path"] = file_path
+    metadata["mtime"] = int(os.path.getmtime(file_path))
     return metadata
 
 def deindex_note(file_path, collection):
@@ -82,7 +84,19 @@ def reconcile_collection(collection, folder_path):
     for ghost in indexed_ids - on_disk:
         deindex_note(ghost, collection)
 
-# --- PARSERS FOR PROJECT-ROUTED FOLDERS (E.G. WEREWOLF) ---
+def index_changed_files(folder_path, collection, route_func, name):
+    """Indexes only files that are new or whose mtime has changed since last run, so a restart
+    doesn't re-embed an entire folder's worth of unchanged notes."""
+    folder_prefix = os.path.join(folder_path, "")
+    existing = collection.get(include=["metadatas"])
+    known_mtimes = {i: m.get("mtime") for i, m in zip(existing["ids"], existing["metadatas"])
+                     if i.startswith(folder_prefix)}
+
+    for file_path in walk_markdown(folder_path):
+        if known_mtimes.get(file_path) != int(os.path.getmtime(file_path)):
+            safe_index(route_func, file_path, collection, name)
+
+# --- PARSERS FOR WEREWOLF-ROUTED FOLDERS ---
 
 def parse_structured_note(frontmatter, file_path, collection, name, sub_type):
     """Handles your atomic notes folder (people, quotes, etc.). Flags them as the ultimate authority."""
@@ -163,8 +177,10 @@ def extract_note_subtype(norm_path):
     parts = norm_path.split("data/notes/")[1].split("/")
     return parts[0] if len(parts) > 1 else "root"
 
-def route_project_file(file_path, collection, name):
-    """Pure switchboard: reads the note once, then hands it to exactly one parser."""
+def route_werewolf_file(file_path, collection, name):
+    """Pure switchboard for all werewolf-domain content, across both source folders
+    (the LARP chronicle under data/, and the Hivemind quest-reports folder). Reads the
+    note once, then hands it to exactly one parser."""
     norm_path = file_path.replace("\\", "/")
     frontmatter, file_body = split_note(file_path)
 
@@ -174,6 +190,8 @@ def route_project_file(file_path, collection, name):
         parse_mechanics_note(frontmatter, file_path, collection, name, file_body)
     elif "data/lore" in norm_path:
         parse_lore_note(frontmatter, file_path, collection, name, file_body)
+    elif "workspace/werewolf/reports" in norm_path:
+        parse_report_note(frontmatter, file_path, collection, name, file_body)
     else:
         parse_generic_project_note(frontmatter, file_path, collection, name, file_body)
 
@@ -182,16 +200,10 @@ def route_standalone_file(file_path, collection, name):
     frontmatter, file_body = split_note(file_path)
     parse_standalone_note(frontmatter, file_path, collection, name, file_body)
 
-def route_werewolf_reports_file(file_path, collection, name):
-    """Switchboard for the quest-reports folder. Every file here is a report, so there's nothing to branch on."""
-    frontmatter, file_body = split_note(file_path)
-    parse_report_note(frontmatter, file_path, collection, name, file_body)
-
 # Maps the "router" string in FOLDERS config to an actual routing function.
 ROUTERS = {
-    "project": route_project_file,
+    "werewolf": route_werewolf_file,
     "standalone": route_standalone_file,
-    "werewolf_reports": route_werewolf_reports_file,
 }
 
 def safe_index(route_func, file_path, collection, name):
@@ -251,9 +263,7 @@ if __name__ == "__main__":
         collection = chroma_client.get_or_create_collection(name=collection_name(config.get("collection", name)))
 
         print(f"Scanning collection: vault_{name} ({config['router']} router)...")
-        for file_path in walk_markdown(folder_path):
-            safe_index(route_func, file_path, collection, name)
-
+        index_changed_files(folder_path, collection, route_func, name)
         reconcile_collection(collection, folder_path)
         observer.schedule(VaultHandler(collection, route_func, name), path=folder_path, recursive=True)
 

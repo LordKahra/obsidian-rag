@@ -8,15 +8,19 @@ class FakeCollection:
         self.upserts = []
         self.deleted = []
         self._ids = list(ids or [])
+        self._metadatas = {}  # id -> metadata, populated by upsert
 
     def upsert(self, documents, metadatas, ids):
         self.upserts.append({"document": documents[0], "metadata": metadatas[0], "id": ids[0]})
+        self._metadatas[ids[0]] = metadatas[0]
+        if ids[0] not in self._ids:
+            self._ids.append(ids[0])
 
     def delete(self, ids):
         self.deleted.extend(ids)
 
     def get(self, include=None):
-        return {"ids": list(self._ids)}
+        return {"ids": list(self._ids), "metadatas": [self._metadatas.get(i, {}) for i in self._ids]}
 
     @property
     def last(self):
