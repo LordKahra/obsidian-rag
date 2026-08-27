@@ -8,6 +8,13 @@ Everything runs on your machine. No note content leaves the host; the only exter
 dependency is whatever embedding backend ChromaDB is configured to use (by default, a
 local sentence-transformers model downloaded on first run).
 
+## Why
+
+Obsidian's built-in search is lexical. If you keep a large vault — worldbuilding notes,
+task lists, drafts — you often want *"what did I write about X"* rather than *"which files
+contain the word X"*. This indexes the vault into a vector store and lets a model query it
+by meaning, with per-folder scoping and metadata filters.
+
 > **Status: personal project, shared as a reference — not a packaged tool.**
 > This is built around one specific vault: my folder layout, my note conventions, a
 > `werewolf` router that encodes the canon hierarchy of a LARP chronicle I play, and a
@@ -16,13 +23,6 @@ local sentence-transformers model downloaded on first run).
 > own vault means editing `config.py`, almost certainly writing your own router/parser, and
 > working around assumptions that are currently hardcoded to my environment. There's no
 > release, no versioning, and no support. Treat it as a worked example, not a product.
-
-## Why
-
-Obsidian's built-in search is lexical. If you keep a large vault — worldbuilding notes,
-task lists, drafts — you often want *"what did I write about X"* rather than *"which files
-contain the word X"*. This indexes the vault into a vector store and lets a model query it
-by meaning, with per-folder scoping and metadata filters.
 
 ## Architecture
 
